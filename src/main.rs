@@ -14,16 +14,18 @@ use ncurses::{initscr, endwin, noecho, echo, stdscr, refresh, mvaddstr, getch, c
 use serde::{Serialize, Deserialize};
 use serde_json;
 
-fn get_choices() -> Vec<String> {
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+fn get_choices() -> Result<Vec<String>> {
     let output = Command::new("apg")
         .args(["-a", "1", "-m", "12"])
-        .output()
-        .expect("Failure running apg");
-    str::from_utf8(&output.stdout).expect("parsing utf8")
+        .output()?;
+    let ret = str::from_utf8(&output.stdout)?
         .split("\n")
         .map(|x| x.to_string())
         .filter(|s| s.len() > 0)
-        .collect()
+        .collect();
+    Ok(ret)
 }
 
 fn draw_cursor(pos: i32, nchoices: i32) {
@@ -58,7 +60,7 @@ struct Pw {
     created_at: chrono::DateTime<chrono::Local>,
 }
 
-fn copy_to_clipboard(pw: &str) {
+fn copy_to_clipboard(pw: &str) -> Result<()> {
     // We need to use xclip
     // because there is no library that will copy to the clipboard
     // and have it survive the process.
@@ -68,17 +70,18 @@ fn copy_to_clipboard(pw: &str) {
         .stdin(Stdio::piped())
         .spawn().expect("xclip");
     let child_stdin = child.stdin.as_mut().expect("xclip stdin");
-    child_stdin.write_all(pw.as_bytes()).expect("write pw to xclip");
+    child_stdin.write_all(pw.as_bytes())?;
+    Ok(())
 }
 
-fn write_to_history_file(pw: &str) {
+fn write_to_history_file(pw: &str) -> Result<()> {
     // Make ~/.pw if needed:
-    let mut pw_dir = home_dir().expect("get $HOME");
+    let mut pw_dir = home_dir().expect("no home");
     pw_dir.push(".pw");
-    fs::create_dir_all(pw_dir.clone()).expect("mkdir -p ~/.pw");
-    let mut perms = fs::metadata(pw_dir.clone()).expect("metadata").permissions();
+    fs::create_dir_all(pw_dir.clone())?;
+    let mut perms = fs::metadata(pw_dir.clone())?.permissions();
     perms.set_mode(0o700);
-    fs::set_permissions(pw_dir.clone(), perms).expect("chmod");
+    fs::set_permissions(pw_dir.clone(), perms)?;
 
     // Append to ~/.pw/history:
     let mut hist_file = pw_dir.clone();
@@ -87,20 +90,21 @@ fn write_to_history_file(pw: &str) {
         .write(true)
         .append(true)
         .create(true)
-        .open(hist_file)
-        .expect("open ~/.pw/history");
+        .open(hist_file)?;
     let ent = Pw { pw: pw.to_string(), created_at: chrono::offset::Local::now() };
-    write!(f, "{}\n", serde_json::to_string(&ent).expect("to json"));
+    write!(f, "{}\n", serde_json::to_string(&ent)?);
+    Ok(())
 }
 
-fn choose_pw(pw: &str) {
-    copy_to_clipboard(pw);
-    write_to_history_file(pw);
+fn choose_pw(pw: &str) -> Result<()> {
+    copy_to_clipboard(pw)?;
+    write_to_history_file(pw)?;
+    Ok(())
 }
 
-fn main() {
-    let choices = get_choices();
-    let nchoices: i32 = choices.len().try_into().unwrap();
+fn main() -> Result<()> {
+    let choices = get_choices()?;
+    let nchoices: i32 = choices.len().try_into()?;
     // println!("{:?}", choices);
 
     curse();
@@ -112,7 +116,7 @@ fn main() {
 
     // Draw the choices:
     for (i, ch) in choices.iter().enumerate() {
-        mvaddstr(i.try_into().unwrap(), 4, ch);
+        mvaddstr(i.try_into()?, 4, ch);
     }
     let mut cur_pos: i32 = 0;
     draw_cursor(cur_pos, nchoices);
@@ -131,7 +135,7 @@ fn main() {
                 draw_cursor(cur_pos, nchoices);
             },
             343 | 10 | 13 => {    // enter | \n | \r respectively
-                choose_pw(&choices[cur_pos as usize]);
+                choose_pw(&choices[cur_pos as usize])?;
                 break;
             },
             _ => {
@@ -140,4 +144,5 @@ fn main() {
         }
     }
     uncurse();
+    Ok(())
 }
