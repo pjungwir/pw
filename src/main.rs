@@ -66,7 +66,7 @@ fn copy_to_clipboard_command() -> Result<std::process::Child> {
     Command::new("xclip")
         .args(["-selection", "clipboard"])
         .stdin(Stdio::piped())
-        .spawn().or_else(|_| Err("xclip"))
+        .spawn().or_else(|_| Err("xclip")?)
 }
 
 #[cfg(target_os = "macos")]
