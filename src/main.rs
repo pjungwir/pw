@@ -7,6 +7,7 @@ use std::io::Write;
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::OpenOptionsExt;
 use dirs::home_dir;
 use std::time::SystemTime;
 use chrono;
@@ -102,6 +103,7 @@ fn write_to_history_file(pw: &str) -> Result<()> {
         .write(true)
         .append(true)
         .create(true)
+        .mode(0o600)
         .open(hist_file)?;
     let ent = Pw { pw: pw.to_string(), created_at: chrono::offset::Local::now() };
     write!(f, "{}\n", serde_json::to_string(&ent)?);
