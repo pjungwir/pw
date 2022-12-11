@@ -60,16 +60,28 @@ struct Pw {
     created_at: chrono::DateTime<chrono::Local>,
 }
 
+#[cfg(target_os = "linux")]
+fn copy_to_clipboard_command() -> Result<std::process::Child> {
+    Command::new("xclip")
+        .args(["-selection", "clipboard"])
+        .stdin(Stdio::piped())
+        .spawn().or_else(|_| Err("xclip"))
+}
+
+#[cfg(target_os = "macos")]
+fn copy_to_clipboard_command() -> Result<std::process::Child> {
+    Command::new("pbcopy")
+        .stdin(Stdio::piped())
+        .spawn().or_else(|_| Err("pbcopy")?)
+}
+
 fn copy_to_clipboard(pw: &str) -> Result<()> {
     // We need to use xclip
     // because there is no library that will copy to the clipboard
     // and have it survive the process.
     // For cli_clipboard, see https://github.com/ActuallyAllie/cli-clipboard/issues/7
-    let mut child = Command::new("xclip")
-        .args(["-selection", "clipboard"])
-        .stdin(Stdio::piped())
-        .spawn().expect("xclip");
-    let child_stdin = child.stdin.as_mut().expect("xclip stdin");
+    let mut child = copy_to_clipboard_command()?;
+    let child_stdin = child.stdin.as_mut().expect("clipboard stdin");
     child_stdin.write_all(pw.as_bytes())?;
     Ok(())
 }
